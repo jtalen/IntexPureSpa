@@ -238,6 +238,13 @@ bool SwitchOffSanitizer;
 bool StateSanitizer;
 #endif
 
+void FlushLc12Serial()
+{
+  while (mySerial.available()) {
+    mySerial.read();
+  }
+}
+
 //Setup
 void setup() {
  
@@ -317,12 +324,26 @@ void setup() {
 #endif  
   uint8_t DefaultChannel = (USED_CHANNEL & 0x00FF);
 #if defined (_28458_28462_)  
-   uint8_t DefaultFirstCommandChar = USED_CHANNEL ;
+  uint8_t DefaultFirstCommandChar = USED_CHANNEL;
 #elif defined (_28442_28440_)  
   uint8_t DefaultFirstCommandChar = (USED_CHANNEL & 0x00FF) + 0x7F;
-#endif  
-  UsedChannel = EEPROM.read(17)< 128? EEPROM.read(17):DefaultChannel ;
-  FirstCommandChar = EEPROM.read(18)< 256? EEPROM.read(18):DefaultFirstCommandChar;
+#endif
+
+  UsedChannel = EEPROM.read(17);
+  if (UsedChannel >= 128) {
+    UsedChannel = DefaultChannel;
+  }
+
+  FirstCommandChar = EEPROM.read(18);
+#if defined (_28458_28462_)
+  if (FirstCommandChar != UsedChannel) {
+    FirstCommandChar = UsedChannel;
+  }
+#elif defined (_28442_28440_)
+  if (FirstCommandChar != (uint8_t)(UsedChannel + 0x7F)) {
+    FirstCommandChar = (uint8_t)(UsedChannel + 0x7F);
+  }
+#endif
 
   Serial.print (F("Used Channel read from EEPROM 0x"));
   Serial.println(UsedChannel,HEX);
@@ -971,7 +992,8 @@ bool SearchChannel(){
         }else{
           ActualSearchChannel=0;
           SetSettings(ActualSearchChannel++);
-        }        
+        }
+        FlushLc12Serial();
      }       
      if (mySerial.available() ) 
      {
@@ -1076,11 +1098,13 @@ void SetSettings(char Channel){
   delay(500);
 
   for(int i=1;i<19;i++){
-
     mySerial.write(Config[i]);
   }
- delay(1000);
- digitalWrite(DO_SET, HIGH);
+
+  delay(200);
+  digitalWrite(DO_SET, HIGH);
+  delay(200);
+  FlushLc12Serial();
 }
 
 //CRC calculation 
