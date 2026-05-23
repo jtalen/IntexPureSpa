@@ -62,8 +62,7 @@
 #define _MQTT_
 
 #ifdef ESP32
-const char* Myssid = "YourSSID";
-const char* Mypassword = "YourPassword";
+#include "secrets.h"
 #endif
 
 
@@ -77,11 +76,11 @@ const char* Mypassword = "YourPassword";
 EspMQTTClient client(
   Myssid,
   Mypassword,
-  "YourMQTT-Broker-IP",  // MQTT Broker server ip
-  "NameMQTTBroker",   // Can be omitted if not needed
-  "PasswordMQTTBroker",   // Can be omitted if not needed
-  "IntexSpa",     // Client name that uniquely identify your device
-  1883              // The MQTT port, default to 1883. this line can be omitted
+  MqttHost,
+  MqttUser,
+  MqttPassword,
+  "IntexSpa",
+  1883
 );
 #endif
 
