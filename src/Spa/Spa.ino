@@ -182,6 +182,7 @@ SoftwareSerial mySerial(2, 4); // RX, TX
 
 // Commande bytes
 #define BYTE_CONTROLLER_LOADING        3
+#define SEARCH_CONFIG_FRAME_SIZE      18
 
 // Value Controller bytes
 
@@ -234,7 +235,7 @@ uint16_t SearchChannelDataCount;
 uint8_t UsedChannel;
 uint8_t FirstCommandChar;
 uint8_t LastSearchConfigChannel;
-uint8_t SearchConfigFrame[18];
+uint8_t SearchConfigFrame[SEARCH_CONFIG_FRAME_SIZE];
 uint8_t SearchConfigFrameIndex;
 uint16_t ChannelChangeOk;
 bool FarenheitCelsius;
@@ -1050,14 +1051,15 @@ bool SearchChannel(){
       } else if (SearchConfigFrameIndex == 1 && c != 0x5B) {
         // restart header detection on repeated 0xAA bytes in noisy serial streams
         SearchConfigFrameIndex = 0;
+        SearchConfigFrame[0] = 0x00;
         if (c == 0xAA) {
           SearchConfigFrame[SearchConfigFrameIndex++] = c;
         }
       } else {
         SearchConfigFrame[SearchConfigFrameIndex++] = c;
-        if (SearchConfigFrameIndex >= sizeof(SearchConfigFrame)) {
+        if (SearchConfigFrameIndex >= SEARCH_CONFIG_FRAME_SIZE) {
           if (IsCloneConfigResponse(SearchConfigFrame, LastSearchConfigChannel)) {
-            SearchChannelDataCount -= sizeof(SearchConfigFrame);
+            SearchChannelDataCount -= SEARCH_CONFIG_FRAME_SIZE;
 #ifdef DEBUG_SEARCH_CLASSIFICATION
             char configres[5];
             Serial.println(F(""));
@@ -1065,7 +1067,7 @@ bool SearchChannel(){
             sprintf(&configres[0],"%02X",LastSearchConfigChannel);
             Serial.print(configres);
             Serial.print(F(" ["));
-            for (uint8_t i = 0; i < sizeof(SearchConfigFrame); i++) {
+            for (uint8_t i = 0; i < SEARCH_CONFIG_FRAME_SIZE; i++) {
               sprintf(&configres[0],"%02X",SearchConfigFrame[i]);
               Serial.print(configres);
               Serial.print(F(" "));
