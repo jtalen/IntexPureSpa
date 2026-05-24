@@ -1048,6 +1048,7 @@ bool SearchChannel(){
           SearchConfigFrame[SearchConfigFrameIndex++] = c;
         }
       } else if (SearchConfigFrameIndex == 1 && c != 0x5B) {
+        // restart header detection on repeated 0xAA bytes in noisy serial streams
         SearchConfigFrameIndex = 0;
         if (c == 0xAA) {
           SearchConfigFrame[SearchConfigFrameIndex++] = c;
@@ -1056,7 +1057,7 @@ bool SearchChannel(){
         SearchConfigFrame[SearchConfigFrameIndex++] = c;
         if (SearchConfigFrameIndex >= sizeof(SearchConfigFrame)) {
           if (IsCloneConfigResponse(SearchConfigFrame, LastSearchConfigChannel)) {
-            SearchChannelDataCount = SearchChannelDataCount >= sizeof(SearchConfigFrame) ? SearchChannelDataCount - sizeof(SearchConfigFrame) : 0;
+            SearchChannelDataCount -= sizeof(SearchConfigFrame);
 #ifdef DEBUG_SEARCH_CLASSIFICATION
             char configres[5];
             Serial.println(F(""));
