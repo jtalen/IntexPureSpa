@@ -170,12 +170,18 @@ _Uncomment to debug_
 
 	//#define DEBUG_RECIEVED_DATA
 	//#define DEBUG_SEARCH_CHANNEL
+	//#define DEBUG_SEARCH_DIAGNOSTICS
 	//#define DEBUG_SEND_COMMAND
 	//#define DEBUG_PUMP_DATA
 	//#define DEBUG_CONTROLER_DATA
 	//#define DEBUG_CONFIG
 	//#define DEBUG_MQTT
 	//#define DEBUG_SEND_VALUE_TO_HOME_AUTOMATION_SW
+
+Experimental radio variants (default keeps current behavior):
+
+	//#define RADIO_VARIANT_ORIGINAL
+	//#define RADIO_VARIANT_CLONE_ACK_FILTER
 
 ## OTA update
 
@@ -250,4 +256,3 @@ you can found some information/help (in french) on the [Jeedom Community thread]
 
 
 **Thanks [@LEECHER1](https://github.com/LEECHER1) for this documentation and all test he do**
-

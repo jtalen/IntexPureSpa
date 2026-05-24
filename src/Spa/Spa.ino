@@ -84,9 +84,25 @@ EspMQTTClient client(
 );
 #endif
 
+/*******************************************************
+*
+*   R A D I O   M O D U L E   V A R I A N T
+*  
+********************************************************/
+//#define RADIO_VARIANT_ORIGINAL
+//#define RADIO_VARIANT_CLONE_ACK_FILTER   // experimental: filter config/ACK-like responses during SearchChannel()
+
+#if defined(RADIO_VARIANT_ORIGINAL) && defined(RADIO_VARIANT_CLONE_ACK_FILTER)
+  #error select only one radio variant
+#endif
+#if !defined(RADIO_VARIANT_ORIGINAL) && !defined(RADIO_VARIANT_CLONE_ACK_FILTER)
+  #define RADIO_VARIANT_ORIGINAL
+#endif
+
 //Uncomment following line to have more debug infos
 //#define DEBUG_RECIEVED_DATA
 //#define DEBUG_SEARCH_CHANNEL
+//#define DEBUG_SEARCH_DIAGNOSTICS
 #define DEBUG_SEND_COMMAND
 #define DEBUG_PUMP_DATA
 //#define DEBUG_CONTROLLER_DATA
@@ -970,6 +986,10 @@ bool SearchChannel(){
 #ifdef DEBUG_SEARCH_CHANNEL 
   char res[5];
 #endif  
+#if defined(RADIO_VARIANT_CLONE_ACK_FILTER)
+  static uint8_t ConfigResponseBuffer[18];
+  static uint8_t ConfigResponseBufferIndex = 0;
+#endif
 
 #ifdef __AVR__
   //in case of overflow
@@ -979,6 +999,9 @@ bool SearchChannel(){
     DataCounter=0;
     while ( mySerial.available())
       mySerial.read();
+#if defined(RADIO_VARIANT_CLONE_ACK_FILTER)
+    ConfigResponseBufferIndex = 0;
+#endif
   }
   else
 #endif    
@@ -986,6 +1009,9 @@ bool SearchChannel(){
      if (millis() - LastTimeReciveDataCheckChannel >1000) 
      {
         SearchChannelDataCount =0;
+#if defined(RADIO_VARIANT_CLONE_ACK_FILTER)
+        ConfigResponseBufferIndex = 0;
+#endif
         if (ActualSearchChannel<128){
           SetSettings(ActualSearchChannel++);
         }else{
@@ -998,7 +1024,64 @@ bool SearchChannel(){
      {
       unsigned char c = mySerial.read();
       LastTimeReciveDataCheckChannel = millis();
+#if defined(RADIO_VARIANT_CLONE_ACK_FILTER)
+      bool CountAsSearchTraffic = true;
+      if (ConfigResponseBufferIndex == 0) {
+        if (c == 0xAA) {
+          ConfigResponseBuffer[ConfigResponseBufferIndex++] = c;
+          CountAsSearchTraffic = false;
+        }
+      } else {
+        ConfigResponseBuffer[ConfigResponseBufferIndex++] = c;
+        CountAsSearchTraffic = false;
+
+        if (ConfigResponseBufferIndex == 2 && ConfigResponseBuffer[1] != 0x5B) {
+          SearchChannelDataCount += ConfigResponseBufferIndex;
+          ConfigResponseBufferIndex = 0;
+        }
+
+        if (ConfigResponseBufferIndex == 18) {
+          uint8_t ExpectedSearchChannel = ActualSearchChannel ? ActualSearchChannel - 1 : 0;
+          bool IsLikelyConfigAck = true;
+          if (ConfigResponseBuffer[9] != 0x04
+              || ConfigResponseBuffer[10] != 0x00
+              || ConfigResponseBuffer[11] != ExpectedSearchChannel
+              || ConfigResponseBuffer[12] != 0x00
+              || ConfigResponseBuffer[13] != 0x00
+              || ConfigResponseBuffer[14] != 0x00
+              || ConfigResponseBuffer[15] != 0x12
+              || ConfigResponseBuffer[16] != 0x00) {
+            IsLikelyConfigAck = false;
+          }
+
+          if (IsLikelyConfigAck) {
+            uint8_t CalculatedChecksum = 0;
+            for (uint8_t i = 0; i < 16; i++) {
+              CalculatedChecksum += ConfigResponseBuffer[i];
+            }
+            IsLikelyConfigAck = (CalculatedChecksum == ConfigResponseBuffer[17]);
+          }
+
+          if (!IsLikelyConfigAck) {
+            SearchChannelDataCount += ConfigResponseBufferIndex;
+          }
+#ifdef DEBUG_SEARCH_DIAGNOSTICS
+          else{
+            Serial.println(F(""));
+            Serial.print(F("Debug search diag : filtered config/ACK response for channel 0x"));
+            Serial.println(ExpectedSearchChannel, HEX);
+          }
+#endif
+          ConfigResponseBufferIndex = 0;
+        }
+      }
+
+      if (CountAsSearchTraffic) {
+        SearchChannelDataCount++;
+      }
+#else
       SearchChannelDataCount++;
+#endif
 #ifdef DEBUG_SEARCH_CHANNEL
       sprintf(&res[0],"%02X",c); 
       if (c==0xAA){
