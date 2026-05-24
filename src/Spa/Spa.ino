@@ -87,12 +87,26 @@ EspMQTTClient client(
 //Uncomment following line to have more debug infos
 //#define DEBUG_RECIEVED_DATA
 //#define DEBUG_SEARCH_CHANNEL
+//#define DEBUG_SEARCH_CLASSIFICATION
 #define DEBUG_SEND_COMMAND
 #define DEBUG_PUMP_DATA
 //#define DEBUG_CONTROLLER_DATA
 //#define DEBUG_CONFIG
 #define DEBUG_MQTT
 //#define DEBUG_SEND_VALUE_TO_HOME_AUTOMATION_SW
+
+// Experimental LC12S module behavior profiles.
+// Keep RADIO_VARIANT_ORIGINAL as default unless testing clone modules.
+#define RADIO_VARIANT_ORIGINAL          0
+#define RADIO_VARIANT_CLONE_ACK_FILTER  1
+
+#ifndef RADIO_VARIANT
+#define RADIO_VARIANT RADIO_VARIANT_ORIGINAL
+#endif
+
+#if RADIO_VARIANT != RADIO_VARIANT_ORIGINAL && RADIO_VARIANT != RADIO_VARIANT_CLONE_ACK_FILTER
+  #error unsupported RADIO_VARIANT
+#endif
 
 #ifdef _MY_SENSORS_
 //#include <MySensors.h>
@@ -219,6 +233,9 @@ uint8_t ActualSearchChannel;
 uint16_t SearchChannelDataCount; 
 uint8_t UsedChannel;
 uint8_t FirstCommandChar;
+uint8_t LastSearchConfigChannel;
+uint8_t SearchConfigFrame[18];
+uint8_t SearchConfigFrameIndex;
 uint16_t ChannelChangeOk;
 bool FarenheitCelsius;
 uint8_t ActualSetpointTemperarue;
@@ -242,6 +259,27 @@ void FlushLc12Serial()
   while (mySerial.available()) {
     mySerial.read();
   }
+}
+
+bool IsCloneConfigResponse(const uint8_t *frame, uint8_t configuredChannel)
+{
+  if (RADIO_VARIANT != RADIO_VARIANT_CLONE_ACK_FILTER)
+    return false;
+
+  if (frame[0] != 0xAA || frame[1] != 0x5B)
+    return false;
+
+  if (frame[11] != configuredChannel)
+    return false;
+
+  if (frame[15] != 0x12 || frame[16] != 0x00)
+    return false;
+
+  uint8_t checksum = 0;
+  for (uint8_t i = 0; i < 17; i++) {
+    checksum += frame[i];
+  }
+  return checksum == frame[17];
 }
 
 //Setup
@@ -387,6 +425,7 @@ void loop() {
     {
       state = 0;
       DataCounter=0;
+      SearchConfigFrameIndex = 0;
       while ( mySerial.available())
         mySerial.read();
     }
@@ -977,6 +1016,7 @@ bool SearchChannel(){
   {
     state = 0;
     DataCounter=0;
+    SearchConfigFrameIndex = 0;
     while ( mySerial.available())
       mySerial.read();
   }
@@ -987,11 +1027,14 @@ bool SearchChannel(){
      {
         SearchChannelDataCount =0;
         if (ActualSearchChannel<128){
-          SetSettings(ActualSearchChannel++);
+          LastSearchConfigChannel = ActualSearchChannel++;
+          SetSettings(LastSearchConfigChannel);
         }else{
           ActualSearchChannel=0;
-          SetSettings(ActualSearchChannel++);
+          LastSearchConfigChannel = ActualSearchChannel++;
+          SetSettings(LastSearchConfigChannel);
         }
+        SearchConfigFrameIndex = 0;
         FlushLc12Serial();
      }       
      if (mySerial.available() ) 
@@ -999,6 +1042,39 @@ bool SearchChannel(){
       unsigned char c = mySerial.read();
       LastTimeReciveDataCheckChannel = millis();
       SearchChannelDataCount++;
+
+      if (SearchConfigFrameIndex == 0) {
+        if (c == 0xAA) {
+          SearchConfigFrame[SearchConfigFrameIndex++] = c;
+        }
+      } else if (SearchConfigFrameIndex == 1 && c != 0x5B) {
+        SearchConfigFrameIndex = 0;
+        if (c == 0xAA) {
+          SearchConfigFrame[SearchConfigFrameIndex++] = c;
+        }
+      } else {
+        SearchConfigFrame[SearchConfigFrameIndex++] = c;
+        if (SearchConfigFrameIndex >= sizeof(SearchConfigFrame)) {
+          if (IsCloneConfigResponse(SearchConfigFrame, LastSearchConfigChannel)) {
+            SearchChannelDataCount = SearchChannelDataCount >= sizeof(SearchConfigFrame) ? SearchChannelDataCount - sizeof(SearchConfigFrame) : 0;
+#ifdef DEBUG_SEARCH_CLASSIFICATION
+            char configres[5];
+            Serial.println(F(""));
+            Serial.print(F("Debug search classification : ignore config response on channel 0x"));
+            sprintf(&configres[0],"%02X",LastSearchConfigChannel);
+            Serial.print(configres);
+            Serial.print(F(" ["));
+            for (uint8_t i = 0; i < sizeof(SearchConfigFrame); i++) {
+              sprintf(&configres[0],"%02X",SearchConfigFrame[i]);
+              Serial.print(configres);
+              Serial.print(F(" "));
+            }
+            Serial.println(F("]"));
+#endif
+          }
+          SearchConfigFrameIndex = 0;
+        }
+      }
 #ifdef DEBUG_SEARCH_CHANNEL
       sprintf(&res[0],"%02X",c); 
       if (c==0xAA){
